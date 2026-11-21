@@ -1,0 +1,9 @@
+/terraform-provider-solidping
+/dist/
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+*.priv.env
+.DS_Store
