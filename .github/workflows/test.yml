@@ -1,0 +1,104 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, lint, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go build ./...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+      - run: go test ./... -count=1
+
+  docs:
+    name: Generated docs are up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - run: go generate ./...
+      - name: Fail when `make docs` changes anything
+        run: git diff --exit-code -- docs || (echo "::error::run 'make docs' and commit the result" && exit 1)
+
+  acceptance:
+    name: Acceptance (${{ matrix.cli.name }} ${{ matrix.cli.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        cli:
+          - { name: terraform, version: "1.9.*" }
+          - { name: terraform, version: "1.*" }
+          - { name: opentofu, version: "1.*" }
+    services:
+      # The published SolidPing image, in test mode: SQLite, and the fixed
+      # test@test.com account the tests mint their token with.
+      solidping:
+        image: ghcr.io/fclairamb/solidping:latest
+        env:
+          SP_RUNMODE: test
+        ports:
+          - 4000:4000
+    env:
+      TF_ACC: "1"
+      SOLIDPING_ENDPOINT: http://localhost:4000
+      SOLIDPING_ORG: test
+      SOLIDPING_ACC_EMAIL: test@test.com
+      SOLIDPING_ACC_PASSWORD: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - if: matrix.cli.name == 'terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.cli.version }}
+          terraform_wrapper: false
+      - if: matrix.cli.name == 'opentofu'
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ matrix.cli.version }}
+          tofu_wrapper: false
+      - if: matrix.cli.name == 'opentofu'
+        name: Point the test framework at OpenTofu
+        run: |
+          echo "TF_ACC_TERRAFORM_PATH=$(which tofu)" >> "$GITHUB_ENV"
+          echo "TF_ACC_PROVIDER_NAMESPACE=hashicorp" >> "$GITHUB_ENV"
+          echo "TF_ACC_PROVIDER_HOST=registry.opentofu.org" >> "$GITHUB_ENV"
+      - name: Wait for SolidPing
+        run: |
+          for _ in $(seq 1 60); do
+            curl -fsS "$SOLIDPING_ENDPOINT/api/mgmt/version" && exit 0
+            sleep 2
+          done
+          echo "::error::SolidPing did not start" && exit 1
+      - run: go test ./... -count=1 -timeout 15m -v
