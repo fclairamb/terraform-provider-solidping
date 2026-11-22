@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Lets a run be started by hand on a branch whose push did not trigger one
+  # (a release PR opened without CI_PAT).
+  workflow_dispatch:
 
 permissions:
   contents: read

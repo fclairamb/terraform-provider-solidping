@@ -1,0 +1,95 @@
+# release-please keeps a `chore(release): vX.Y.Z` pull request up to date with
+# the changelog of what was merged since the last release. Merging that PR
+# tags the version and creates the GitHub release; the `goreleaser` job then
+# builds every platform, signs SHA256SUMS and attaches the artifacts, in the
+# layout the Terraform and OpenTofu registries read.
+#
+# Secrets (see README.md, "Releasing"):
+#   CI_PAT           token release-please acts with, so that the release PR
+#                    gets a CI run and its merge triggers this workflow again.
+#                    Without it the workflow falls back to GITHUB_TOKEN: the
+#                    release PR then needs a manual run of the Tests workflow.
+#   GPG_PRIVATE_KEY  ASCII-armored signing key registered on both registries
+#   PASSPHRASE       its passphrase
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pre-create the labels release-please relies on to track its own PRs:
+      # if the Labels API hiccups while it runs, it loses track of its PR.
+      - name: Ensure release-please labels exist
+        env:
+          GH_TOKEN: ${{ secrets.CI_PAT || github.token }}
+        run: |
+          gh label create "autorelease: pending" --color ededed --force --repo ${{ github.repository }}
+          gh label create "autorelease: tagged"  --color ededed --force --repo ${{ github.repository }}
+
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.CI_PAT || github.token }}
+
+      # Drift detector: HEAD is a merged release commit but no GitHub release
+      # exists, so release-please lost track of its own PR. Fail loudly.
+      - name: Detect release drift
+        if: ${{ always() && !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          msg=$(git log -1 --pretty=%s)
+          if [[ "$msg" =~ ^chore\(release\):\ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            want="v${BASH_REMATCH[1]}"
+            if ! gh api "repos/${{ github.repository }}/releases/tags/$want" >/dev/null 2>&1; then
+              echo "::error::HEAD is '$msg' but release $want was not created by release-please." \
+                   "Tag and release must be created manually (gh release create $want --target <merge-sha>)."
+              exit 1
+            fi
+            echo "Release drift check: $want tagged and released ✓"
+          fi
+
+  goreleaser:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        id: import_gpg
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}

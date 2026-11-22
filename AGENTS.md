@@ -34,3 +34,17 @@ Framework. Spec and API audit: `specs/done/2026/11/2026-11-21-04-terraform-provi
 - Never name a real company in code, tests, examples or docs: use `acme` (`acme.com`,
   `alice@acme.com`).
 - Never commit a token or a key. CI secrets: `GPG_PRIVATE_KEY`, `PASSPHRASE` (release only).
+
+## Pull requests and releases
+- Squash-merge only, the PR title is the commit subject: it must be a conventional commit
+  (`pr-title.yml` checks it). release-please derives the version and `CHANGELOG.md` from it:
+  never edit `CHANGELOG.md` or `.release-please-manifest.json` by hand outside the release PR.
+- `main` is protected by a ruleset: pull request, squash, the `CI` check, branch up to date.
+- Labels: `automerge` (merges once CI is green), `autopilot` / `will-automerge` / `autorelease`
+  (same meaning as in solidping).
+
+## Specs
+- Filename format: `YYYY-MM-DD-NN-title.md` (`NN` unique per day).
+- Active: `specs/todos/`, done: `specs/done/YYYY/MM/`, backlog: `specs/backlog/`.
+- Never delete the `specs/todos/` directory itself, even when it is empty.
+- Issues about the provider are filed in this repository.
