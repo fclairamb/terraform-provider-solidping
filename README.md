@@ -106,18 +106,12 @@ after `make install`.
 Pushing a `v*` tag runs GoReleaser (`.github/workflows/release.yml`): it builds every platform,
 signs `SHA256SUMS` with GPG and publishes a GitHub release in the layout both registries expect.
 
-One-time setup, before the first tag:
+The signing key lives in gopass under `personal/solidping/terraform-provider/` (`gpg-private-key`,
+`gpg-passphrase`, `gpg-public-key`, `gpg-fingerprint`) and is deployed as the repository secrets
+`GPG_PRIVATE_KEY` and `PASSPHRASE`. Its public half is registered on registry.terraform.io
+(*Settings → Signing keys*) and in the OpenTofu registry (`opentofu/registry`).
 
-1. Generate a GPG key (RSA or DSA, as the registries require) and store it in the password manager.
-2. Add the repository secrets `GPG_PRIVATE_KEY` (ASCII-armored private key) and `PASSPHRASE`.
-3. Make the repository public.
-4. Terraform Registry: sign in on registry.terraform.io with GitHub, add the public key under
-   *Settings → Signing keys*, then *Publish → Provider* and pick this repository.
-5. OpenTofu Registry: open the "Submit new provider" issue on `opentofu/registry` for
-   `fclairamb/terraform-provider-solidping`, and submit the public key with its "Submit new
-   provider signing key" issue.
-
-Then, for each release: `git tag v0.1.0 && git push origin v0.1.0`.
+For each release: `git tag v0.1.0 && git push origin v0.1.0`.
 
 ## License
 
