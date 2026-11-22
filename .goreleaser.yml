@@ -54,6 +54,9 @@ signs:
       - "${artifact}"
 
 release:
+  # The GitHub release already exists: release-please created it, with the
+  # changelog as its notes. Only attach the artifacts.
+  mode: keep-existing
   extra_files:
     - glob: terraform-registry-manifest.json
       name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"

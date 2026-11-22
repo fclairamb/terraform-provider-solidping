@@ -103,15 +103,29 @@ after `make install`.
 
 ## Releasing
 
-Pushing a `v*` tag runs GoReleaser (`.github/workflows/release.yml`): it builds every platform,
-signs `SHA256SUMS` with GPG and publishes a GitHub release in the layout both registries expect.
+Releases are cut by [release-please](https://github.com/googleapis/release-please)
+(`.github/workflows/release-please.yml`). It keeps a `chore(release): vX.Y.Z` pull request up to
+date with the changelog of what was merged since the last release. Merging that pull request tags
+the version and creates the GitHub release; GoReleaser then builds every platform, signs
+`SHA256SUMS` with GPG and attaches the artifacts in the layout both registries read.
 
-The signing key lives in gopass under `personal/solidping/terraform-provider/` (`gpg-private-key`,
-`gpg-passphrase`, `gpg-public-key`, `gpg-fingerprint`) and is deployed as the repository secrets
-`GPG_PRIVATE_KEY` and `PASSPHRASE`. Its public half is registered on registry.terraform.io
-(*Settings → Signing keys*) and in the OpenTofu registry (`opentofu/registry`).
+Pull requests are squash-merged with their title as the commit subject, so the title must be a
+conventional commit (`feat: ...`, `fix(check): ...`): `feat` and `fix` are what make a release.
 
-For each release: `git tag v0.1.0 && git push origin v0.1.0`.
+Secrets and where they live (gopass paths, never the values):
+
+| Repository secret | gopass | Purpose |
+|---|---|---|
+| `GPG_PRIVATE_KEY`, `PASSPHRASE` | `personal/solidping/terraform-provider/gpg-private-key`, `gpg-passphrase` | Sign `SHA256SUMS`. The public half (`gpg-public-key`) is registered on registry.terraform.io and in the OpenTofu registry. |
+| `CI_PAT` | `github/terraform-provider-solidping/ci-pat` | Fine-grained token (contents and pull requests, read and write, this repository) release-please and the auto-merge workflow act with, so that what they push triggers CI. Without it they fall back to `GITHUB_TOKEN`: start the Tests workflow by hand on the release PR. |
+
+## Automation
+
+- A pull request labelled `automerge` merges on its own once CI is green
+  (`.github/workflows/auto-merge.yml` enables auto-merge and keeps the branch up to date).
+- Renovate groups non-major updates and auto-merges them (`.github/renovate.json`).
+- The `autopilot`, `will-automerge` and `autorelease` labels and `specs/todos/` are the same
+  conventions as in the SolidPing repository.
 
 ## License
 
